@@ -7,6 +7,8 @@ import type { RouteData } from "common";
 import { persistentAtom, transientAtomFamily } from ".";
 import { RESET } from "jotai/utils";
 import { atomEffect, observe } from "jotai-effect";
+import { routeProgressFamily } from "./route-progress";
+import { getAutoProgressTransition } from "../utility/auto-progress";
 
 const baseRouteSelector = atom(async (get) => {
   const { initializeRouteState, parseRoute } = await import("common");
@@ -111,6 +113,9 @@ export const routeSelector = atom(async (get) => {
 
 const ACTIVE_EDGE_VERSION = 0;
 const activeEdgeIndex = persistentAtom("active-edge", [0], ACTIVE_EDGE_VERSION);
+const autoProgressQueue = atom<Promise<void>>(Promise.resolve());
+const manualProgressRevision = atom(0);
+const lastAutoProgressMessage = atom<string | null>(null);
 
 export function edgeId(edgeIndex: number) {
   return `edge-${edgeIndex}`;
@@ -118,25 +123,43 @@ export function edgeId(edgeIndex: number) {
 
 export const activeEdgeAtom = atom(
   (get) => get(activeEdgeIndex),
-  async (get, set, value: string | typeof RESET) => {
+  (get, set, value: string | typeof RESET) => {
     if (value === RESET) {
+      set(manualProgressRevision, (revision) => revision + 1);
+      set(lastAutoProgressMessage, null);
       set(activeEdgeIndex, RESET);
       return;
     }
 
-    const edges = (await get(routeSelector)).edges;
-    const nextEdgeIndex = get(activeEdgeAtom)[0] + 1;
-    const nextAreaId = edges[nextEdgeIndex];
+    const routePromise = get(routeSelector);
+    const revision = get(manualProgressRevision);
+    const task = get(autoProgressQueue)
+      .catch(() => {})
+      .then(async () => {
+        const route = await routePromise;
+        if (
+          get(routeSelector) !== routePromise ||
+          get(manualProgressRevision) !== revision ||
+          get(lastAutoProgressMessage) === value
+        ) {
+          return;
+        }
 
-    let messageAreaId = null;
-    const matches = /Generating level \d+ area "(.*?)"/.exec(value);
-    if (matches !== null) {
-      messageAreaId = matches[1];
-    }
+        const transition = getAutoProgressTransition(
+          route,
+          get(activeEdgeIndex)[0],
+          value,
+        );
+        if (transition === null) return;
 
-    if (nextAreaId === messageAreaId) {
-      set(activeEdgeIndex, [nextEdgeIndex]);
-    }
+        if (transition.completionKey !== null) {
+          set(routeProgressFamily(transition.completionKey), true);
+        }
+        set(lastAutoProgressMessage, value);
+        set(activeEdgeIndex, [transition.edgeIndex]);
+      });
+    set(autoProgressQueue, task);
+    return task;
   },
 );
 
@@ -145,6 +168,7 @@ export const nextEdgeAtom = transientAtomFamily((param: number | null) => {
   return atom(
     (get) => get(activeEdgeAtom)[0] + 1 == param,
     (_get, set) => {
+      set(manualProgressRevision, (revision) => revision + 1);
       set(activeEdgeIndex, [param]);
     },
   );

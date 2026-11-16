@@ -2,7 +2,7 @@ name: Build and Deploy
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: write
@@ -18,9 +18,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
       - name: Install and Build
         run: |
           npm ci
+          npm -w web test
           npm -w seeding run seed tree
           npm -w web run build
           touch web/dist/.nojekyll
