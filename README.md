@@ -7,6 +7,10 @@ same computer's browser. The default WebSocket address is `ws://localhost:6754`.
 If automatic log discovery does not work, pass `--log-path` with your client
 log's full path.
 
+Allow local network access for this website if your browser requests it.
+If the site stays at "Setup Auto-Progress" despite the helper running, check
+that permission in the browser's site settings.
+
 Auto-progress now also checks off the next matching standalone travel step.
 It uses the helper's existing area-generation messages, which indicate the
 expected destination, not proof of quest completion or the transport used.
